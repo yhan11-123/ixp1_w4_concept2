@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cup & Faucet Interaction</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: linear-gradient(180deg, #e8f4f8 0%, #d1ecf1 50%, #b8d4e3 100%);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      user-select: none;
+    }
+
+    #game-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Instruction banner */
+    #instruction {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 12px 28px;
+      border-radius: 30px;
+      font-size: 20px;
+      color: #2c3e50;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      text-align: center;
+      transition: opacity 0.5s;
+      pointer-events: none;
+    }
+
+    /* Faucet - left side, mounted to wall */
+    #faucet {
+      position: absolute;
+      top: 80px;
+      left: 60px;
+      width: 220px;
+      cursor: pointer;
+      z-index: 10;
+      transition: filter 0.2s;
+    }
+
+    #faucet:hover {
+      filter: brightness(1.1);
+    }
+
+    #faucet.disabled {
+      cursor: default;
+      pointer-events: none;
+    }
+
+    /* Cup - draggable */
+    #cup {
+      position: absolute;
+      width: 150px;
+      cursor: grab;
+      z-index: 20;
+      transition: none;
+    }
+
+    #cup.snapped {
+      cursor: default;
+      pointer-events: none;
+    }
+
+    #cup.dragging {
+      cursor: grabbing;
+      filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.3));
+    }
+
+    #cup.smooth {
+      transition: left 0.5s ease, top 0.5s ease;
+    }
+
+    /* Water stream from faucet */
+    #water-stream {
+      position: absolute;
+      top: 260px;
+      left: 195px;
+      width: 18px;
+      height: 0;
+      background: linear-gradient(180deg, rgba(100, 200, 255, 0.7), rgba(50, 150, 255, 0.9));
+      border-radius: 0 0 8px 8px;
+      z-index: 5;
+      opacity: 0;
+      transition: height 0.3s ease, opacity 0.3s ease;
+    }
+
+    #water-stream.pouring {
+      opacity: 1;
+      height: 120px;
+      animation: waterFlow 0.4s ease-in-out infinite alternate;
+    }
+
+    @keyframes waterFlow {
+      0% { width: 16px; left: 196px; }
+      100% { width: 20px; left: 194px; }
+    }
+
+    /* Splash effect */
+    .splash {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: rgba(100, 200, 255, 0.8);
+      border-radius: 50%;
+      z-index: 6;
+      animation: splashAnim 0.6s ease-out forwards;
+    }
+
+    @keyframes splashAnim {
+      0% { transform: scale(1) translateY(0); opacity: 1; }
+      100% { transform: scale(0.3) translateY(-30px); opacity: 0; }
+    }
+
+    /* Thirsty person */
+    #person {
+      position: absolute;
+      width: 180px;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+
+    #person.visible {
+      opacity: 1;
+    }
+
+    /* Drop zone highlight */
+    .drop-zone {
+      position: absolute;
+      border: 3px dashed rgba(100, 200, 255, 0.6);
+      border-radius: 15px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .drop-zone.active {
+      opacity: 1;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { border-color: rgba(100, 200, 255, 0.4); background: rgba(100, 200, 255, 0.05); }
+      50% { border-color: rgba(100, 200, 255, 0.8); background: rgba(100, 200, 255, 0.15); }
+    }
+
+    /* Completion message */
+    #completion {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 40px 60px;
+      border-radius: 20px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      z-index: 200;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #completion.show {
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    #completion h2 {
+      font-size: 28px;
+      color: #27ae60;
+      margin-bottom: 10px;
+    }
+
+    #completion p {
+      font-size: 18px;
+      color: #555;
+    }
+
+    #replay-btn {
+      margin-top: 18px;
+      padding: 10px 30px;
+      font-size: 16px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #replay-btn:hover {
+      background: #2980b9;
+    }
+
+    /* Counter / shelf */
+    #counter {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100px;
+      background: linear-gradient(180deg, #8B7355, #6B5340);
+      z-index: 2;
+    }
+
+    #counter-top {
+      position: absolute;
+      bottom: 100px;
+      left: 0;
+      width: 100%;
+      height: 12px;
+      background: linear-gradient(180deg, #a08060, #8B7355);
+      border-radius: 4px 4px 0 0;
+      z-index: 3;
+    }
+
+    /* Wall pipe for faucet */
+    #wall-pipe {
+      position: absolute;
+      top: 100px;
+      left: 0;
+      width: 75px;
+      height: 80px;
+      background: linear-gradient(90deg, #888, #aaa, #888);
+      border-radius: 0 6px 6px 0;
+      z-index: 5;
+    }
+
+    /* Background wall tile */
+    #wall {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: calc(100% - 100px);
+      background:
+        linear-gradient(180deg, #f5efe6 0%, #ede4d8 100%);
+      z-index: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <!-- Background elements -->
+    <div id="wall"></div>
+    <div id="counter-top"></div>
+    <div id="counter"></div>
+    <div id="wall-pipe"></div>
+
+    <!-- Instruction text -->
+    <div id="instruction">Drag the cup under the faucet</div>
+
+    <!-- Drop zones -->
+    <div id="faucet-zone" class="drop-zone"></div>
+    <div id="person-zone" class="drop-zone"></div>
+
+    <!-- Faucet image -->
+    <img id="faucet" src="concept2/faucet.png" alt="Faucet" draggable="false">
+
+    <!-- Water stream -->
+    <div id="water-stream"></div>
+
+    <!-- Cup image -->
+    <img id="cup" src="concept2/cup.png" alt="Cup" draggable="false">
+
+    <!-- Person image -->
+    <img id="person" src="concept2/man sad.png" alt="Thirsty Person" draggable="false">
+
+    <!-- Completion overlay -->
+    <div id="completion">
+      <h2>Great Job!</h2>
+      <p>You helped the thirsty person get water!</p>
+      <button id="replay-btn">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    // ---- STATE ----
+    let state = 'drag-cup-to-faucet';
+    // States: drag-cup-to-faucet, click-faucet, filling, drag-cup-to-person, done
+
+    // ---- ELEMENTS ----
+    const cup = document.getElementById('cup');
+    const faucet = document.getElementById('faucet');
+    const waterStream = document.getElementById('water-stream');
+    const person = document.getElementById('person');
+    const instruction = document.getElementById('instruction');
+    const faucetZone = document.getElementById('faucet-zone');
+    const personZone = document.getElementById('person-zone');
+    const completion = document.getElementById('completion');
+    const replayBtn = document.getElementById('replay-btn');
+
+    // ---- POSITIONS ----
+    const counterTop = window.innerHeight - 112;
+
+    // Cup original position (right side, on counter)
+    const cupOrigX = window.innerWidth - 230;
+    const cupOrigY = counterTop - 150;
+
+    // Faucet spout position (where cup should be placed under)
+    const faucetSnapX = 120;
+    const faucetSnapY = counterTop - 150;
+
+    // Person position (where cup originally was, right side)
+    const personX = window.innerWidth - 260;
+    const personY = counterTop - 280;
+
+    // Drop zone dimensions
+    const zoneSize = 180;
+
+    // ---- DRAG STATE ----
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    // ---- INIT ----
+    function init() {
+      state = 'drag-cup-to-faucet';
+      isDragging = false;
+
+      // Reset cup
+      cup.src = 'concept2/cup.png';
+      cup.style.left = cupOrigX + 'px';
+      cup.style.top = cupOrigY + 'px';
+      cup.classList.remove('snapped', 'dragging', 'smooth');
+      cup.style.pointerEvents = '';
+      cup.style.cursor = 'grab';
+
+      // Reset faucet
+      faucet.classList.remove('disabled');
+
+      // Reset water
+      waterStream.classList.remove('pouring');
+      waterStream.style.opacity = '0';
+      waterStream.style.height = '0';
+
+      // Reset person
+      person.src = 'concept2/man sad.png';
+      person.classList.remove('visible');
+      person.style.left = personX + 'px';
+      person.style.top = personY + 'px';
+
+      // Reset zones
+      faucetZone.style.left = (faucetSnapX - 15) + 'px';
+      faucetZone.style.top = (faucetSnapY - 15) + 'px';
+      faucetZone.style.width = zoneSize + 'px';
+      faucetZone.style.height = (zoneSize - 10) + 'px';
+      faucetZone.classList.add('active');
+
+      personZone.style.left = (personX - 10) + 'px';
+      personZone.style.top = (personY + 80) + 'px';
+      personZone.style.width = (zoneSize + 20) + 'px';
+      personZone.style.height = (zoneSize - 10) + 'px';
+      personZone.classList.remove('active');
+
+      // Reset completion
+      completion.classList.remove('show');
+
+      // Instruction
+      instruction.textContent = 'Drag the cup under the faucet';
+      instruction.style.opacity = '1';
+    }
+
+    // ---- DRAG HANDLERS ----
+    function getEventPos(e) {
+      if (e.touches) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDrag(e) {
+      if (state !== 'drag-cup-to-faucet' && state !== 'drag-cup-to-person') return;
+      e.preventDefault();
+
+      const pos = getEventPos(e);
+      const rect = cup.getBoundingClientRect();
+      dragOffsetX = pos.x - rect.left;
+      dragOffsetY = pos.y - rect.top;
+      isDragging = true;
+      cup.classList.add('dragging');
+      cup.classList.remove('smooth');
+    }
+
+    function moveDrag(e) {
+      if (!isDragging) return;
+      e.preventDefault();
+
+      const pos = getEventPos(e);
+      cup.style.left = (pos.x - dragOffsetX) + 'px';
+      cup.style.top = (pos.y - dragOffsetY) + 'px';
+    }
+
+    function endDrag(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      cup.classList.remove('dragging');
+
+      const cupRect = cup.getBoundingClientRect();
+      const cupCenterX = cupRect.left + cupRect.width / 2;
+      const cupCenterY = cupRect.top + cupRect.height / 2;
+
+      if (state === 'drag-cup-to-faucet') {
+        // Check if cup is near faucet zone
+        const zoneRect = faucetZone.getBoundingClientRect();
+        if (
+          cupCenterX > zoneRect.left && cupCenterX < zoneRect.right &&
+          cupCenterY > zoneRect.top && cupCenterY < zoneRect.bottom
+        ) {
+          // Snap cup under faucet
+          cup.classList.add('smooth');
+          cup.style.left = faucetSnapX + 'px';
+          cup.style.top = faucetSnapY + 'px';
+
+          setTimeout(() => {
+            cup.classList.add('snapped');
+            faucetZone.classList.remove('active');
+            state = 'click-faucet';
+            instruction.textContent = 'Click the faucet to pour water';
+          }, 100);
+        } else {
+          // Snap back to original
+          cup.classList.add('smooth');
+          cup.style.left = cupOrigX + 'px';
+          cup.style.top = cupOrigY + 'px';
+        }
+      } else if (state === 'drag-cup-to-person') {
+        // Check if cup is near person zone
+        const zoneRect = personZone.getBoundingClientRect();
+        if (
+          cupCenterX > zoneRect.left && cupCenterX < zoneRect.right &&
+          cupCenterY > zoneRect.top && cupCenterY < zoneRect.bottom
+        ) {
+          // Snap cup to person and make them happy
+          cup.classList.add('smooth');
+          cup.style.left = (personX + 20) + 'px';
+          cup.style.top = (personY + 130) + 'px';
+          personZone.classList.remove('active');
+
+          setTimeout(() => {
+            cup.classList.add('snapped');
+            state = 'done';
+
+            // Person becomes happy
+            person.src = 'concept2/man happy.png';
+            instruction.textContent = 'The person is happy now!';
+
+            // Hide cup after person takes it
+            setTimeout(() => {
+              cup.style.opacity = '0';
+              cup.style.transition = 'opacity 0.5s';
+            }, 600);
+
+            // Show completion
+            setTimeout(() => {
+              completion.classList.add('show');
+              instruction.style.opacity = '0';
+            }, 1500);
+          }, 500);
+        } else {
+          // Snap back to faucet area
+          cup.classList.add('smooth');
+          cup.style.left = faucetSnapX + 'px';
+          cup.style.top = faucetSnapY + 'px';
+        }
+      }
+    }
+
+    // ---- FAUCET CLICK ----
+    faucet.addEventListener('click', () => {
+      if (state !== 'click-faucet') return;
+      state = 'filling';
+      instruction.textContent = 'Filling the cup with water...';
+
+      // Start water stream
+      waterStream.classList.add('pouring');
+
+      // Create splash particles
+      const splashInterval = setInterval(() => {
+        createSplash();
+      }, 150);
+
+      // After 2 seconds, fill complete
+      setTimeout(() => {
+        clearInterval(splashInterval);
+        waterStream.classList.remove('pouring');
+        waterStream.style.opacity = '0';
+        waterStream.style.height = '0';
+
+        // Change cup to filled cup
+        cup.src = 'concept2/cup water.png';
+        cup.classList.remove('snapped');
+        cup.style.pointerEvents = '';
+        cup.style.cursor = 'grab';
+
+        // Show the sad person on the right
+        person.classList.add('visible');
+        personZone.classList.add('active');
+
+        state = 'drag-cup-to-person';
+        instruction.textContent = 'Drag the cup of water to the thirsty person';
+      }, 2000);
+    });
+
+    function createSplash() {
+      const splash = document.createElement('div');
+      splash.className = 'splash';
+      splash.style.left = (185 + Math.random() * 30) + 'px';
+      splash.style.top = (faucetSnapY + 10) + 'px';
+      document.getElementById('game-container').appendChild(splash);
+      setTimeout(() => splash.remove(), 600);
+    }
+
+    // ---- EVENT LISTENERS ----
+    // Mouse events
+    cup.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', moveDrag);
+    document.addEventListener('mouseup', endDrag);
+
+    // Touch events
+    cup.addEventListener('touchstart', startDrag, { passive: false });
+    document.addEventListener('touchmove', moveDrag, { passive: false });
+    document.addEventListener('touchend', endDrag);
+
+    // Replay
+    replayBtn.addEventListener('click', () => {
+      cup.style.opacity = '1';
+      cup.style.transition = 'none';
+      init();
+    });
+
+    // ---- START ----
+    init();
+  </script>
+</body>
+</html>
